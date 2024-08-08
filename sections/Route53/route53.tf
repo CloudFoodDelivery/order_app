@@ -1,13 +1,13 @@
 # Hosted zone for your Route 53 domain
 
 resource "aws_route53_zone" "main" {
-  name = "replacethisdomain.com" # Replace with your registered domain
+  name = "devorderz.com"
 }
 
-#DNS record for CF CDN
-resource "aws_route53_record" "www" {
+# DNS record for CF CDN
+resource "aws_route53_record" "devorderz" {
   zone_id = aws_route53_zone.main.zone_id
-  name    = "www"
+  name    = "devorderz.com"
   type    = "A"
 
   alias {

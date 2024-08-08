@@ -1,9 +1,6 @@
-#Update URL when team decides dns name
-
-
-# Name of the Cognito User Pool
+# Cognito Configuration
 variable "cognito_user_pool_name" {
-  description = "The name of the Cognito User Pool"
+  description = "The name of the Cognito User Pool."
   type        = string
   default     = "project-user-pool"
 }
@@ -37,15 +34,15 @@ variable "allow_admin_create_user_only" {
 }
 
 # Name of the Cognito User Pool Client
+
 variable "cognito_user_pool_client_name" {
-  description = "The name of the Cognito User Pool Client"
+  description = "The name of the Cognito User Pool Client."
   type        = string
   default     = "project-user-pool-client"
 }
 
-# Callback URLs for the User Pool Client
-variable "callback_urls" {
-  description = "The callback URLs for the Cognito User Pool Client"
+variable "cognito_callback_urls" {
+  description = "Callback URLs for the Cognito User Pool Client."
   type        = list(string)
   default     = ["https://devorderz.com/callback"]
 }
