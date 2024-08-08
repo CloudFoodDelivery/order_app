@@ -7,11 +7,6 @@ terraform {
   }
 }
 
-# Configure the AWS Provider
-provider "aws" {
-  region = "us-east-1"
-}
-
 # Hosted zone for your Route 53 domain
 resource "aws_route53_zone" "main" {
   name = "replacethisdomain.com" # Replace with your registered domain
@@ -24,8 +19,8 @@ resource "aws_route53_record" "www" {
   type    = "A"
 
   alias {
-    name                   = aws_cloudfront_distribution.main.domain_name
-    zone_id                = aws_cloudfront_distribution.main.hosted_zone_id
+    name   = aws_cloudfront_distribution.main.domain_name
+    zone_id  = aws_cloudfront_distribution.main.hosted_zone_id
     evaluate_target_health = false
   }
 }
@@ -111,4 +106,41 @@ resource "aws_s3_bucket_policy" "example" {
     ]
 }
 POLICY
+}
+
+# Cognito User pool
+resource "aws_cognito_user_pool" "project_user_pool" {
+  name = "project-user-pool"
+
+  password_policy {
+    minimum_length = 8
+    require_uppercase = true
+    require_lowercase = true
+    require_numbers = true
+    require_symbols = false
+  }
+
+  mfa_configuration = "OPTIONAL"
+
+  auto_verified_attributes = ["email"]
+
+  admin_create_user_config {
+    allow_admin_create_user_only = true
+  }
+
+  #Cognito User Pool Client
+  resource "aws_cognito_user_pool_client" "project_user_pool_client" {
+    name = "project-user-pool-client"
+    user_pool_id = aws_cognito_user_pool.project_user_pool.id
+
+    generate_secret = false
+
+    callback_urls = ["https://devorderz.com/callback"]
+
+    allowed_oauth_flows = ["code"]
+
+    allowed_oauth_scoped = ["email","openid","profile"]
+
+    allowed_oauth_flows_user_pool_client = true
+  }
 }
