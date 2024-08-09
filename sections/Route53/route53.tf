@@ -4,7 +4,7 @@ resource "aws_route53_zone" "main" {
   name = "devorderz.com"
 }
 
-# DNS record for CF CDN
+# DNS record for CF cdn
 resource "aws_route53_record" "devorderz" {
   zone_id = aws_route53_zone.main.zone_id
   name    = "devorderz.com"

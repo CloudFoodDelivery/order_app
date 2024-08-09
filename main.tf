@@ -7,7 +7,7 @@ terraform {
   }
 }
 
-# Create a new S3 bucket
+# create a new S3 bucket
 resource "aws_s3_bucket" "example" {
   bucket = "www.devorderz.com"
 
