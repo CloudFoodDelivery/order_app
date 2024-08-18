@@ -7,8 +7,8 @@ terraform {
   }
 }
 
-# Create a new S3 bucket
-resource "aws_s3_bucket" "example" {
+# create a new S3 bucket
+resource "aws_s3_bucket" "s3_bucket" {
   bucket = "www.devorderz.com"
 
   tags = {
@@ -18,7 +18,7 @@ resource "aws_s3_bucket" "example" {
 }
 
 # Set public access block configuration
-resource "aws_s3_bucket_public_access_block" "example" {
+resource "aws_s3_bucket_public_access_block" "s3_bucket" {
   bucket = aws_s3_bucket.example.id
 
   block_public_acls   = false
@@ -26,8 +26,8 @@ resource "aws_s3_bucket_public_access_block" "example" {
 }
 
 # Set bucket policy to make it publicly accessible
-resource "aws_s3_bucket_policy" "example" {
-  bucket = aws_s3_bucket.example.id
+resource "aws_s3_bucket_policy" "s3_bucet" {
+  bucket = aws_s3_bucket.s3_bucket.id
 
   policy = <<POLICY
 {
@@ -45,10 +45,47 @@ resource "aws_s3_bucket_policy" "example" {
 POLICY
 }
 
+#Request Certificate from ACM
+resource "aws_acm_certificate" "website_cert" {
+  domain_name = "devorderz.com"
+  validation_method = "DNS"
+
+  subject_alternative_names = [
+    "www.devorderz.com",
+  ]
+
+  tags = {
+    Name = " website_cert"
+  }
+}
+
+# DNS validation using Route 53
+resources "aws_route53_record" "website_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certification.website_cert.domain_validation_options : dvo.domain_name => {
+      name = dvo.resource_record_name
+      type = dvo.resource_record_type
+      record = dvp.resource_record_value
+    }
+  }
+
+  zone_id = aws_route53_zone.main.zone_id
+  name = each.value.name
+  type = each.value.type
+  ttl = 60
+  records = [each.value.record]
+}
+
+# Wait for the vaidation to complete
+resource "aws_acm_certificate_validation" "website_cert_validation" {
+  certificate_arn = aws_acm_certificate.website_cert.arn
+  validation_record_fqdns = [for record in aws_route53_record.website_cert_validation : record.fqdn]
+}
+
 # Defined CF Distribution 
 resource "aws_cloudfront_distribution" "main" {
   origin {
-    domain_name = aws_s3_bucket.example.bucket_regional_domain_name
+    domain_name = aws_s3_bucket.s3_bucket.bucket_regional_domain_name
     origin_id   = "myS3Origin"
   }
 
@@ -85,20 +122,22 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certification_arn = aws_acm_certificate_validation.website_cert_validation.certificate_arn
+    ssl_support_method = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2018"
+    cloudfront_default_certificate = false
   }
 }
 
 # Hosted zone for your Route 53 domain
 resource "aws_route53_zone" "main" {
-  zone_id = "Z08064211GODJBVPYX3CD"
   name = "devorderz.com"
 }
 
 # DNS record for CF CDN
-resource "aws_route53_record" "www" {
+resource "aws_route53_record" "devorderz" {
   zone_id = aws_route53_zone.main.zone_id
-  name    = "www.devorderz.com"
+  name    = "devorderz.com"
   type    = "A"
 
   alias {
@@ -107,19 +146,7 @@ resource "aws_route53_record" "www" {
     evaluate_target_health = false
   }
 }
-#DNS record for devorderz.com (root domain) pointing to CloudFront
-resource "aws_route53_record" "root" {
-  zone_id = aws_route53_zone.main.zone_id
-  name = "devorderz.com" #Root domain
-  type = "A"
 
-  alias {
-    name                   = aws_cloudfront_distribution.main.domain_name
-    zone_id                = aws_cloudfront_distribution.main.hosted_zone_id
-    evaluate_target_health = false
-  }
-}
-    
 # Cognito User Pool
 resource "aws_cognito_user_pool" "project_user_pool" {
   name = "project-user-pool"
@@ -152,4 +179,43 @@ resource "aws_cognito_user_pool_client" "project_user_pool_client" {
   allowed_oauth_flows               = ["code"]
   allowed_oauth_scopes              = ["email","openid","profile"]
   allowed_oauth_flows_user_pool_client = true
+}
+
+#Create a WAFv2 Web aws_cloudfront_distribution
+resource "aws_wafv2_web_acl "main "{
+  name = "main-waf-acl"
+  description = "Main WAF ACL"
+  scope = "CLOUDFRONT" 
+
+  default_action {
+    allow {}
+  }
+
+  visibility_config{
+    cloudwatch_metrics_enable_true
+    metric_name = "main-waf-acl"
+    sampled_requests_enabled = true
+  }
+
+  rule{
+    name ="rate-limit"
+    priority = 1
+
+    action {
+      block {} #Blcok the request if it exceeds the rate limit
+    }
+
+    statement {
+      rate_based_statement {
+        limit = 1000 #Adjust the rate limit as needed
+        aggregate_key_type = "IP"
+      }
+    }
+
+    visibility_config{
+      cloudwatch_metrics_enabled = true
+      metric_name = "rate-limit"
+      sampled_requests_enambled = true
+    }
+  }
 }
