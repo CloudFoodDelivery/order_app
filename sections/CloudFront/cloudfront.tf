@@ -1,28 +1,50 @@
+#Request Certificate from ACM
+resource "aws_acm_certificate" "website_cert" {
+  domain_name = "devorderz.com"
+  validation_method = "DNS"
+
+  subject_alternative_names = [
+    "www.devorderz.com",
+  ]
+
+  tags = {
+    Name = " website_cert"
+  }
+}
+
+# DNS validation using Route 53
+resources "aws_route53_record" "website_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certification.website_cert.domain_validation_options : dvo.domain_name => {
+      name = dvo.resource_record_name
+      type = dvo.resource_record_type
+      record = dvp.resource_record_value
+    }
+  }
+
+  zone_id = aws_route53_zone.main.zone_id
+  name = each.value.name
+  type = each.value.type
+  ttl = 60
+  records = [each.value.record]
+}
+
+# Wait for the vaidation to complete
+resource "aws_acm_certificate_validation" "website_cert_validation" {
+  certificate_arn = aws_acm_certificate.website_cert.arn
+  validation_record_fqdns = [for record in aws_route53_record.website_cert_validation : record.fqdn]
+}
+
+# Defined CF Distribution 
 resource "aws_cloudfront_distribution" "main" {
   origin {
     domain_name = aws_s3_bucket.example.bucket_regional_domain_name
     origin_id   = "myS3Origin"
-
-    s3_origin_config {
-      origin_access_identity = aws_cloudfront_origin_access_identity.example.cloudfront_access_identity_path
-    }
-  }
-
-  origin {
-    domain_name = "${aws_api_gateway_rest_api.example.id}.execute-api.${var.region}.amazonaws.com"
-    origin_id   = "apiGatewayOrigin"
-
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "https-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
-    }
   }
 
   enabled             = true
   is_ipv6_enabled     = true
-  comment             = "S3 and API Gateway CloudFront Distribution"
+  comment             = "S3 CloudFront Distribution"
   default_root_object = "index.html"
 
   default_cache_behavior {
@@ -44,26 +66,6 @@ resource "aws_cloudfront_distribution" "main" {
     max_ttl                = 86400
   }
 
-  ordered_cache_behavior {
-    path_pattern           = "/api/*"
-    target_origin_id       = "apiGatewayOrigin"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS", "POST"]
-    cached_methods         = ["GET", "HEAD"]
-
-    forwarded_values {
-      query_string = true
-
-      cookies {
-        forward = "all"
-      }
-    }
-
-    min_ttl                = 0
-    default_ttl            = 0
-    max_ttl                = 0
-  }
-
   price_class = "PriceClass_All"
 
   restrictions {
@@ -73,10 +75,27 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certification_arn = aws_acm_certificate_validation.website_cert_validation.certificate_arn
+    ssl_support_method = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2018"
+    cloudfront_default_certificate = false
   }
 }
 
-resource "aws_cloudfront_origin_access_identity" "example" {
-  comment = "Example OAI"
+# Hosted zone for your Route 53 domain
+resource "aws_route53_zone" "main" {
+  name = "devorderz.com"
+}
+
+# DNS record for CF CDN
+resource "aws_route53_record" "devorderz" {
+  zone_id = aws_route53_zone.main.zone_id
+  name    = "devorderz.com"
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.main.domain_name
+    zone_id                = aws_cloudfront_distribution.main.hosted_zone_id
+    evaluate_target_health = false
+  }
 }
