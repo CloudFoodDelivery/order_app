@@ -29,8 +29,7 @@ The Food Distribution Application is a cloud-based solution designed to efficien
    git clone https://github.com/yourusername/food-distribution-app.git
 
 
-
-   Infrastructure Setup
+Infrastructure Setup
 This project leverages Terraform to manage and deploy cloud infrastructure on AWS. The infrastructure is designed to support a secure and scalable environment for a food delivery service, focusing on database management and network configuration.
 
 Network Configuration
