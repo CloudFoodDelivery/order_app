@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+# order_app
+Where all the code will be stored
+=======
 # Food Distribution Application
 
 ## Overview
@@ -27,3 +31,4 @@ The Food Distribution Application is a cloud-based solution designed to efficien
 1. **Clone the Repository:**
    ```bash
    git clone https://github.com/yourusername/food-distribution-app.git
+>>>>>>> main
