@@ -7,13 +7,6 @@ terraform {
   }
 }
 
-<<<<<<< HEAD
-# Hosted zone for your Route 53 domain
-resource "aws_route53_zone" "main" {
-  name = "devorderz.com"
-}
-
-=======
 provider "aws" {
   region = "us-east-2"
 }
@@ -22,7 +15,6 @@ provider "aws" {
 # S3 Bucket and Configuration
 # ------------------------------
 
->>>>>>> main
 # Create a new S3 bucket
 resource "aws_s3_bucket" "s3_bucket" {
   bucket = "www.devorderz.com"
@@ -34,11 +26,7 @@ resource "aws_s3_bucket" "s3_bucket" {
 }
 
 # Set public access block configuration
-<<<<<<< HEAD
-resource "aws_s3_bucket_public_access_block" "s3_bucket_access_block" {
-=======
 resource "aws_s3_bucket_public_access_block" "s3_bucket_public_access_block" {
->>>>>>> main
   bucket = aws_s3_bucket.s3_bucket.id
 
   block_public_acls   = false
@@ -65,8 +53,6 @@ resource "aws_s3_bucket_policy" "s3_bucket_policy" {
 POLICY
 }
 
-<<<<<<< HEAD
-=======
 # ------------------------------
 # Route 53 Hosted Zone and Records
 # ------------------------------
@@ -106,7 +92,6 @@ resource "aws_route53_record" "www_devorderz" {
 # ACM Certificate and Validation
 # ------------------------------
 
->>>>>>> main
 # Request Certificate from ACM
 resource "aws_acm_certificate" "website_cert" {
   domain_name       = "devorderz.com"
@@ -144,13 +129,10 @@ resource "aws_acm_certificate_validation" "website_cert_validation" {
   validation_record_fqdns = [for record in aws_route53_record.website_cert_validation : record.fqdn]
 }
 
-<<<<<<< HEAD
-=======
 # ------------------------------
 # CloudFront Distribution
 # ------------------------------
 
->>>>>>> main
 # Define CloudFront Distribution
 resource "aws_cloudfront_distribution" "main" {
   origin {
@@ -196,55 +178,6 @@ resource "aws_cloudfront_distribution" "main" {
     minimum_protocol_version       = "TLSv1.2_2018"
     cloudfront_default_certificate = false
   }
-<<<<<<< HEAD
-}
-
-# DNS record for CloudFront CDN
-resource "aws_route53_record" "devorderz" {
-  zone_id = aws_route53_zone.main.zone_id
-  name    = "devorderz.com"
-  type    = "A"
-
-  alias {
-    name                   = aws_cloudfront_distribution.main.domain_name
-    zone_id                = aws_cloudfront_distribution.main.hosted_zone_id
-    evaluate_target_health = false
-  }
-}
-
-# Cognito User Pool
-resource "aws_cognito_user_pool" "project_user_pool" {
-  name = "project-user-pool"
-
-  password_policy {
-    minimum_length    = 8
-    require_uppercase = true
-    require_lowercase = true
-    require_numbers   = true
-    require_symbols   = false
-  }
-
-  mfa_configuration        = "OPTIONAL"
-  auto_verified_attributes = ["email"]
-
-  admin_create_user_config {
-    allow_admin_create_user_only = true
-  }
-}
-
-# Cognito User Pool Client
-resource "aws_cognito_user_pool_client" "project_user_pool_client" {
-  name                                 = "project-user-pool-client"
-  user_pool_id                         = aws_cognito_user_pool.project_user_pool.id
-  generate_secret                      = false
-  callback_urls                        = ["https://devorderz.com/callback"]
-  allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = ["email", "openid", "profile"]
-  allowed_oauth_flows_user_pool_client = true
-}
-
-# Create a WAFv2 Web ACL for CloudFront Distribution
-=======
 
   web_acl_id = aws_wafv2_web_acl.main.arn
 }
@@ -254,7 +187,6 @@ resource "aws_cognito_user_pool_client" "project_user_pool_client" {
 # ------------------------------
 
 # Create a WAFv2 Web ACL
->>>>>>> main
 resource "aws_wafv2_web_acl" "main" {
   name        = "main-waf-acl"
   description = "Main WAF ACL"
@@ -293,113 +225,6 @@ resource "aws_wafv2_web_acl" "main" {
   }
 }
 
-<<<<<<< HEAD
-# AWS Step Functions for Purchase Process
-resource "aws_fd_purchase_process_machine" "step_function_machine" {
-  name     = "StepFunctionMachine"
-  role_arn = "arn:aws:iam::730335569978:role/service-role/StepFunctions-FD-PURCHASE-PROCESS-MACHINE-role-nkbxyfivf"
-
-  definition = jsonencode({
-    Comment = "A description of my state machine",
-    StartAt = "Choice",
-    States = {
-      Choice = {
-        Type = "Choice",
-        Choices = [
-          {
-            Variable     = "$.type",
-            StringEquals = "PURCHASE",
-            Next         = "Purchase Handler"
-          },
-          {
-            Variable     = "$.type",
-            StringEquals = "REFUND",
-            Next         = "Refund Handler"
-          }
-        ],
-        Default = "Result Handler"
-      },
-      "Purchase Handler" = {
-        Type       = "Task",
-        Resource   = "arn:aws:states:::lambda:invoke",
-        OutputPath = "$.Payload",
-        Parameters = {
-          "Payload.$"  = "$",
-          FunctionName = "arn:aws:lambda:us-east-2:730335569978:function:PurchaseHandler:$LATEST"
-        },
-        Retry = [
-          {
-            ErrorEquals = [
-              "Lambda.ServiceException",
-              "Lambda.AWSLambdaException",
-              "Lambda.SdkClientException",
-              "Lambda.TooManyRequestsException"
-            ],
-            IntervalSeconds = 1,
-            MaxAttempts     = 3,
-            BackoffRate     = 2
-          }
-        ],
-        Next = "Result Handler"
-      },
-      "Result Handler" = {
-        Type       = "Task",
-        Resource   = "arn:aws:states:::lambda:invoke",
-        OutputPath = "$.Payload",
-        Parameters = {
-          "Payload.$"  = "$",
-          FunctionName = "arn:aws:lambda:us-east-2:730335569978:function:ResultHandler:$LATEST"
-        },
-        Retry = [
-          {
-            ErrorEquals = [
-              "Lambda.ServiceException",
-              "Lambda.AWSLambdaException",
-              "Lambda.SdkClientException",
-              "Lambda.TooManyRequestsException"
-            ],
-            IntervalSeconds = 1,
-            MaxAttempts     = 3,
-            BackoffRate     = 2
-          }
-        ],
-        End = true
-      },
-      "Refund Handler" = {
-        Type       = "Task",
-        Resource   = "arn:aws:states:::lambda:invoke",
-        OutputPath = "$.Payload",
-        Parameters = {
-          "Payload.$"  = "$",
-          FunctionName = "arn:aws:lambda:us-east-2:730335569978:function:RefundHandler:$LATEST"
-        },
-        Retry = [
-          {
-            ErrorEquals = [
-              "Lambda.ServiceException",
-              "Lambda.AWSLambdaException",
-              "Lambda.SdkClientException",
-              "Lambda.TooManyRequestsException"
-            ],
-            IntervalSeconds = 1,
-            MaxAttempts     = 3,
-            BackoffRate     = 2
-          }
-        ],
-        Next = "Result Handler"
-      }
-    }
-  })
-
-  tags = {
-    Name        = "Step Function Machine"
-    Environment = "Dev"
-  }
-}
-
-output "website_url" {
-  value = "https://${aws_cloudfront_distribution.main.domain_name}"
-=======
 # ------------------------------
 # Cognito User Pool and Client
 # ------------------------------
@@ -624,5 +449,4 @@ resource "aws_api_gateway_deployment" "example_deployment" {
   ]
   rest_api_id = aws_api_gateway_rest_api.example.id
   stage_name  = "prod"
->>>>>>> main
 }
