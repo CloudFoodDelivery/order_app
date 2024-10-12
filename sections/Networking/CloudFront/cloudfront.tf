@@ -1,9 +1,8 @@
-
-# Define CloudFront Distribution
-resource "aws_cloudfront_distribution" "main" {
+resource "aws_cloudfront_distribution" "devorderz" {
   origin {
-    domain_name = aws_s3_bucket.s3_bucket.bucket_regional_domain_name
-    origin_id   = "myS3Origin"
+    domain_name              = "devorderz.com.s3.amazonaws.com"
+    origin_access_control_id = aws_cloudfront_origin_access_control.default.id
+    origin_id                = "devorderz.com"
   }
 
   enabled             = true
@@ -12,10 +11,11 @@ resource "aws_cloudfront_distribution" "main" {
   default_root_object = "index.html"
 
   default_cache_behavior {
-    target_origin_id       = "myS3Origin"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD"]
-    cached_methods         = ["GET", "HEAD"]
+    target_origin_id           = "devorderz.com"
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "DELETE", "OPTIONS", "PATCH", "HEAD"]
+    cached_methods             = ["GET", "HEAD"]
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.pass.id
 
     forwarded_values {
       query_string = false
