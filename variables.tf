@@ -36,6 +36,8 @@ variable "db_password2" {
   sensitive   = true
 }
 
-variable "sg_rds_id" {
-  description = "The ID of the RDS security group"
-}
+##commented out due to unnecessary usage (already defined and referenced in the main.tf)
+#variable "sg_rds_id" {
+# description = "The ID of the RDS security group"
+#default     = "aws_security_group"
+#}

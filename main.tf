@@ -76,15 +76,6 @@ resource "aws_sns_topic" "bucket_notifications" {
   name = "bucket-notifications"
 }
 
-resource "aws_s3_bucket_notification" "bucket_notification" {
-  bucket = aws_s3_bucket.bucket.id
-
-  topic {
-    topic_arn     = aws_sns_topic.bucket_notifications.arn
-    events        = ["s3:ObjectCreated:*"]
-    filter_prefix = "logs/"
-  }
-}
 
 # ------------------------------
 # Route 53 Hosted Zone and Records
@@ -92,20 +83,6 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
 
 resource "aws_route53_zone" "devorderz_com" {
   name = "devorderz.com"
-}
-
-resource "aws_route53_query_logging_config" "dev_logs" {
-  name                      = "dev_logs-logging-config"
-  record_type               = "QUERY_LOGGING"
-  cloudwatch_logs_group_arn = aws_cloudwatch_log_group.dev_logs.arn
-}
-
-resource "aws_route53_zone" "devorderz" {
-  name = "devorderz.com."
-  query_logging_config {
-    id     = aws_route53_query_logging_config.devorderz.id
-    region = "us-east-1"
-  }
 }
 
 resource "aws_cloudwatch_log_group" "devorderz_group" {
@@ -131,6 +108,54 @@ resource "aws_acm_certificate" "website_cert" {
   subject_alternative_names = ["www.devorderz.com"]
 }
 
+#----------------------------------
+#Declared CF Resources
+#----------------------------------
+
+resource "aws_cloudfront_origin_access_control" "default" {
+  name                              = "devorderz-oac"
+  description                       = "Origin Access Control for S3 bucket access"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+resource "aws_cloudfront_response_headers_policy" "pass" {
+  name = "devorderz-response-headers-policy"
+
+  # Example: set security headers
+  security_headers_config {
+    content_security_policy {
+      override                = true
+      content_security_policy = "default-src 'self';"
+    }
+    content_type_options {
+      override = true
+    }
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+    referrer_policy {
+      referrer_policy = "no-referrer"
+      override        = true
+    }
+    strict_transport_security {
+      access_control_max_age_sec = 63072000
+      include_subdomains         = true
+      override                   = true
+    }
+    xss_protection {
+      override   = true
+      protection = true
+      mode_block = true
+    }
+  }
+}
+
+
+
+
+
 # ------------------------------
 # CloudFront Distribution
 # ------------------------------
@@ -150,7 +175,7 @@ resource "aws_cloudfront_distribution" "devorderz" {
   default_cache_behavior {
     target_origin_id           = "devorderz.com"
     viewer_protocol_policy     = "redirect-to-https"
-    allowed_methods            = ["GET", "DELETE", "OPTIONS", "PATCH", "HEAD"]
+    allowed_methods            = ["HEAD", "DELETE", "POST", "GET", "OPTIONS", "PUT", "PATCH"]
     cached_methods             = ["GET", "HEAD"]
     response_headers_policy_id = aws_cloudfront_response_headers_policy.pass.id
 
@@ -247,117 +272,95 @@ resource "aws_wafv2_web_acl" "main" {
       sampled_requests_enabled   = true
     }
   }
-  resource "aws_wafv2_web_acl" "main" {
-    provider    = aws.us_east_1
-    name        = "main-waf-acl"
-    description = "Main WAF ACL"
-    scope       = "CLOUDFRONT"
 
-    default_action {
-      allow {}
+  # Rule 1: Rate Limit Rule
+  rule {
+    name     = "rate-limit"
+    priority = 1
+
+    action {
+      block {}
+    }
+
+    statement {
+      rate_based_statement {
+        limit              = 1000
+        aggregate_key_type = "IP"
+      }
     }
 
     visibility_config {
       cloudwatch_metrics_enabled = true
-      metric_name                = "main-waf-acl"
+      metric_name                = "rate-limit"
       sampled_requests_enabled   = true
     }
+  }
 
-    # Rule 1: Rate Limit Rule
-    rule {
-      name     = "rate-limit"
-      priority = 1
+  # Rule 2: AWS Managed Rules for Anonymous IP List
+  rule {
+    name     = "rule-1"
+    priority = 2
 
-      action {
-        block {}
-      }
-
-      statement {
-        rate_based_statement {
-          limit              = 1000
-          aggregate_key_type = "IP"
-        }
-      }
-
-      visibility_config {
-        cloudwatch_metrics_enabled = true
-        metric_name                = "rate-limit"
-        sampled_requests_enabled   = true
-      }
+    override_action {
+      count {}
     }
 
-    # Rule 2: AWS Managed Rules for Anonymous IP List
-    rule {
-      name     = "rule-1"
-      priority = 2
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesAnonymousIpList"
+        vendor_name = "AWS"
 
-      override_action {
-        count {}
-      }
 
-      statement {
-        managed_rule_group_statement {
-          name        = "AWSManagedRulesAnonymousIpList"
-          vendor_name = "AWS"
-
-          excluded_rule {
-            name = "SizeRestrictions_QUERYSTRING"
-          }
-
-          scope_down_statement {
-            geo_match_statement {
-              country_codes = ["US", "NL"]
-            }
+        scope_down_statement {
+          geo_match_statement {
+            country_codes = ["US", "NL"]
           }
         }
       }
-
-      visibility_config {
-        cloudwatch_metrics_enabled = false
-        metric_name                = "friendly-rule-metric-1"
-        sampled_requests_enabled   = false
-      }
     }
 
-    # Rule 3: AWS Managed Rules for Known Bad Inputs
-    rule {
-      name     = "rule-2"
-      priority = 3
-
-      override_action {
-        count {}
-      }
-
-      statement {
-        managed_rule_group_statement {
-          name        = "AWSManagedRulesKnownBadInputsRuleSet"
-          vendor_name = "AWS"
-
-          excluded_rule {
-            name = "SizeRestrictions_QUERYSTRING"
-          }
-
-          scope_down_statement {
-            geo_match_statement {
-              country_codes = ["US", "NL"]
-            }
-          }
-        }
-      }
-
-      visibility_config {
-        cloudwatch_metrics_enabled = false
-        metric_name                = "friendly-rule-metric-2"
-        sampled_requests_enabled   = false
-      }
-    }
-
-    tags = {
-      Tag1 = "Value1"
-      Tag2 = "Value2"
+    visibility_config {
+      cloudwatch_metrics_enabled = false
+      metric_name                = "friendly-rule-metric-1"
+      sampled_requests_enabled   = false
     }
   }
+
+  # Rule 3: AWS Managed Rules for Known Bad Inputs
+  rule {
+    name     = "rule-2"
+    priority = 3
+
+    override_action {
+      count {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesKnownBadInputsRuleSet"
+        vendor_name = "AWS"
+
+        scope_down_statement {
+          geo_match_statement {
+            country_codes = ["US", "NL"]
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = false
+      metric_name                = "friendly-rule-metric-2"
+      sampled_requests_enabled   = false
+    }
+  }
+
+  tags = {
+    Tag1 = "Value1"
+    Tag2 = "Value2"
+  }
 }
+
 
 # ------------------------------
 # Cognito User Pool and Client
@@ -438,19 +441,72 @@ resource "aws_iam_role" "lambda_role" {
 # RDS Instances
 # ------------------------------
 
+#  VPC Configuration
+resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
+}
+
+# Define Subnets in us-east-2a and us-east-2b
+resource "aws_subnet" "subnet_a" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = "us-east-2a"
+}
+
+resource "aws_subnet" "subnet_b" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "us-east-2b"
+}
+
+# Define RDS Subnet Group with these subnets
+resource "aws_db_subnet_group" "rds_subnet_group" {
+  name       = "rds-subnet-group"
+  subnet_ids = [aws_subnet.subnet_a.id, aws_subnet.subnet_b.id]
+
+  tags = {
+    Name = "RDS subnet group"
+  }
+}
+
+#RDS Security Groups
+# Security Group for RDS Instances
+resource "aws_security_group" "sg_rds" {
+  vpc_id      = aws_vpc.main.id
+  description = "Security group for RDS instances"
+
+  # Allow inbound access on MySQL port 3306
+  ingress {
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] # Modify this as needed for more restricted access
+  }
+
+  # Allow all outbound traffic
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "rds-security-group"
+  }
+}
+
+
+
 resource "aws_db_instance" "rds_instance1" {
   allocated_storage      = 20
   engine                 = "mysql"
   instance_class         = "db.t3.micro"
   username               = var.db_username1
   password               = var.db_password1
-  vpc_security_group_ids = [var.sg_rds_id]
+  vpc_security_group_ids = [aws_security_group.sg_rds.id]
+  db_subnet_group_name   = aws_db_subnet_group.rds_subnet_group.name
   skip_final_snapshot    = false
-
-  tags = {
-    Name                  = var.db_name1
-    copy_tags_to_snapshot = true
-  }
 }
 
 resource "aws_db_instance" "rds_instance2" {
@@ -459,11 +515,7 @@ resource "aws_db_instance" "rds_instance2" {
   instance_class         = "db.t3.micro"
   username               = var.db_username2
   password               = var.db_password2
-  vpc_security_group_ids = [var.sg_rds_id]
+  vpc_security_group_ids = [aws_security_group.sg_rds.id]
+  db_subnet_group_name   = aws_db_subnet_group.rds_subnet_group.name
   skip_final_snapshot    = false
-
-  tags = {
-    Name                  = var.db_name2
-    copy_tags_to_snapshot = true
-  }
 }
