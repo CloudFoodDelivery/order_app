@@ -399,42 +399,149 @@ resource "aws_cognito_user_pool_client" "project_user_pool_client" {
 }
 
 # ------------------------------
+# API Gateway and Lambda Integration
+# ------------------------------
+
+resource "aws_api_gateway_rest_api" "api_gateway" {
+  name = "devorderz-api"
+}
+
+resource "aws_api_gateway_resource" "customer_resource" {
+  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+  parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
+  path_part   = "customers"
+}
+
+resource "aws_api_gateway_resource" "order_resource" {
+  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+  parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
+  path_part   = "orders"
+}
+
+resource "aws_api_gateway_resource" "food_items_resource" {
+  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+  parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
+  path_part   = "food-items"
+}
+
+resource "aws_api_gateway_method" "customer_method" {
+  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
+  resource_id   = aws_api_gateway_resource.customer_resource.id
+  http_method   = "POST"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "customer_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.api_gateway.id
+  resource_id             = aws_api_gateway_resource.customer_resource.id
+  http_method             = aws_api_gateway_method.customer_method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.customer_function.invoke_arn
+}
+
+resource "aws_api_gateway_method" "order_method" {
+  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
+  resource_id   = aws_api_gateway_resource.order_resource.id
+  http_method   = "POST"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "order_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.api_gateway.id
+  resource_id             = aws_api_gateway_resource.order_resource.id
+  http_method             = aws_api_gateway_method.order_method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.order_function.invoke_arn
+}
+
+resource "aws_api_gateway_method" "food_items_method" {
+  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
+  resource_id   = aws_api_gateway_resource.food_items_resource.id
+  http_method   = "POST"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "food_items_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.api_gateway.id
+  resource_id             = aws_api_gateway_resource.food_items_resource.id
+  http_method             = aws_api_gateway_method.food_items_method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.food_items_function.invoke_arn
+}
+
+resource "aws_api_gateway_deployment" "api_deployment" {
+  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+  stage_name  = "prod"
+}
+
+# ------------------------------
 # Lambda Functions
 # ------------------------------
 
 data "archive_file" "lambda_zip_customer" {
   type        = "zip"
-  source_dir  = "${path.module}/sections/Compute/lambda/customers/lamda_function_customer"
+  source_dir  = "${path.module}/lambda/customers"
   output_path = "${path.module}/lambda_function_customer.zip"
 }
 
 data "archive_file" "lambda_zip_order" {
   type        = "zip"
-  source_dir  = "${path.module}/sections/Compute/lambda/food_items_lambda/items_storage"
+  source_dir  = "${path.module}/lambda/orders"
   output_path = "${path.module}/lambda_function_order.zip"
 }
 
 data "archive_file" "lambda_zip_food_items" {
   type        = "zip"
-  source_dir  = "${path.module}/sections/Compute/lambda/food_items_lambda/items_storage"
-  output_path = "${path.module}/lambda/fooditems.zip"
+  source_dir  = "${path.module}/lambda/food_items"
+  output_path = "${path.module}/lambda_function_food_items.zip"
 }
 
-resource "aws_iam_role" "lambda_role" {
-  name = "lambda-exec-role"
+resource "aws_lambda_function" "customer_function" {
+  function_name = "customer-handler"
+  runtime       = "python3.9"
+  handler       = "lambda_function.lambda_handler"
+  role          = aws_iam_role.lambda_role.arn
+  filename      = data.archive_file.lambda_zip_customer.output_path
+}
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Action = "sts:AssumeRole",
-        Effect = "Allow",
-        Principal = {
-          Service = "lambda.amazonaws.com"
-        }
-      }
-    ]
-  })
+resource "aws_lambda_function" "order_function" {
+  function_name = "order-handler"
+  runtime       = "python3.9"
+  handler       = "lambda_function.lambda_handler"
+  role          = aws_iam_role.lambda_role.arn
+  filename      = data.archive_file.lambda_zip_order.output_path
+}
+
+resource "aws_lambda_function" "food_items_function" {
+  function_name = "food-items-handler"
+  runtime       = "python3.9"
+  handler       = "lambda_function.lambda_handler"
+  role          = aws_iam_role.lambda_role.arn
+  filename      = data.archive_file.lambda_zip_food_items.output_path
+}
+
+resource "aws_lambda_permission" "api_gateway_invoke_customer" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.customer_function.arn
+  principal     = "apigateway.amazonaws.com"
+}
+
+resource "aws_lambda_permission" "api_gateway_invoke_order" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.order_function.arn
+  principal     = "apigateway.amazonaws.com"
+}
+
+resource "aws_lambda_permission" "api_gateway_invoke_food_items" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.food_items_function.arn
+  principal     = "apigateway.amazonaws.com"
 }
 
 # ------------------------------
