@@ -504,19 +504,19 @@ resource "aws_iam_role" "lambda_role" {
 
 data "archive_file" "lambda_zip_customer" {
   type        = "zip"
-  source_dir  = "${path.module}/lambda/customers"
+  source_dir  = "${path.module}/sections/Compute/lambda/customers"
   output_path = "${path.module}/lambda_function_customer.zip"
 }
 
 data "archive_file" "lambda_zip_order" {
   type        = "zip"
-  source_dir  = "${path.module}/lambda/orders"
+  source_dir  = "${path.module}/sections/Compute/lambda/orders_lambda"
   output_path = "${path.module}/lambda_function_order.zip"
 }
 
 data "archive_file" "lambda_zip_food_items" {
   type        = "zip"
-  source_dir  = "${path.module}/lambda/food_items"
+  source_dir  = "${path.module}/sections/Compute/lambda/food_items_lambda"
   output_path = "${path.module}/lambda_function_food_items.zip"
 }
 
