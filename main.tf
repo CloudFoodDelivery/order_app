@@ -399,7 +399,7 @@ resource "aws_cognito_user_pool_client" "project_user_pool_client" {
 }
 
 # ------------------------------
-# API Gateway and Lambda Integration
+#  API Gateway and Lambda Integration
 # ------------------------------
 
 resource "aws_api_gateway_rest_api" "api_gateway" {
