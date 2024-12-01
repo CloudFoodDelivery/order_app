@@ -477,7 +477,7 @@ resource "aws_api_gateway_deployment" "api_deployment" {
 }
 
 #-----------------------------
-#I AM ROLE FOR LAMBDAS
+#IAM ROLE FOR LAMBDAS
 #-----------------------------
 # IAM Role for Lambda execution
 resource "aws_iam_role" "lambda_role" {
