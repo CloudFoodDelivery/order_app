@@ -1,4 +1,3 @@
-#Editing for testing with workflow
 terraform {
   required_providers {
     aws = {
@@ -8,13 +7,14 @@ terraform {
   }
 }
 
-# Provider Configuration
+# Provider for us-east-2 (default region for most resources)
 provider "aws" {
-  region = "us-east-2" # Default region for most resources
+  region = "us-east-2"
 }
 
+# Provider for us-east-1 (specific for CloudFront WAF)
 provider "aws" {
-  alias  = "us_east_1" # Provider for us-east-1 (CloudFront and WAF)
+  alias  = "us_east_1"
   region = "us-east-1"
 }
 
@@ -22,15 +22,17 @@ provider "aws" {
 # S3 Bucket and Configuration
 # ------------------------------
 
+# Create a new S3 bucket
 resource "aws_s3_bucket" "s3_bucket" {
-  bucket = "devorderz.com"
+  bucket = "devorderz-bucket"
 
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = all
+  tags = {
+    Name        = "website-bucket"
+    Environment = "Dev"
   }
 }
 
+# Set public access block configuration
 resource "aws_s3_bucket_public_access_block" "s3_bucket_public_access_block" {
   bucket = aws_s3_bucket.s3_bucket.id
 
@@ -38,134 +40,120 @@ resource "aws_s3_bucket_public_access_block" "s3_bucket_public_access_block" {
   block_public_policy = false
 }
 
+# Set bucket policy to make it publicly accessible
 resource "aws_s3_bucket_policy" "s3_bucket_policy" {
   bucket = aws_s3_bucket.s3_bucket.id
 
   policy = <<POLICY
 {
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "Statement1",
-      "Effect": "Allow",
-      "Principal": "*",
-      "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::devorderz.com/*"
-    },
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "cloudfront.amazonaws.com"
-      },
-      "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::devorderz.com/*",
-      "Condition": {
-        "StringEquals": {
-          "AWS:SourceArn": "arn:aws:cloudfront::EYFRSGMITV7S9"
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "Statement1",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::devorderz.com/*"
         }
-      }
-    }
-  ]
+    ]
 }
 POLICY
 }
-#----------------------------
-#S3 Bucket SNS notifications
-#----------------------------
-
-resource "aws_sns_topic" "bucket_notifications" {
-  name = "bucket-notifications"
-}
-
 
 # ------------------------------
 # Route 53 Hosted Zone and Records
 # ------------------------------
 
-resource "aws_route53_zone" "devorderz_com" {
+# Hosted zone for your Route 53 domain
+resource "aws_route53_zone" "main" {
   name = "devorderz.com"
 }
 
-resource "aws_cloudwatch_log_group" "devorderz_group" {
-  name = "devoerderz_group-logs"
+# DNS record for CloudFront CDN (devorderz.com)
+resource "aws_route53_record" "devorderz" {
+  zone_id = aws_route53_zone.main.zone_id
+  name    = "devorderz.com"
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.main.domain_name
+    zone_id                = "Z2FDTNDATAQYW2" # CloudFront Hosted Zone ID
+    evaluate_target_health = false
+  }
+}
+
+# DNS record for CloudFront CDN (www.devorderz.com)
+resource "aws_route53_record" "www_devorderz" {
+  zone_id = aws_route53_zone.main.zone_id
+  name    = "www.devorderz.com"
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.main.domain_name
+    zone_id                = "Z2FDTNDATAQYW2" # CloudFront Hosted Zone ID
+    evaluate_target_health = false
+  }
 }
 
 # ------------------------------
 # ACM Certificate and Validation
 # ------------------------------
 
+# ACM certificate resource for us-east-1 CF connection
 resource "aws_acm_certificate" "website_cert_us_east_1" {
-  provider          = aws.us_east_1
+  provider          = aws.us_east_1 # Specify that this certificate is in us-east-1
   domain_name       = "devorderz.com"
   validation_method = "DNS"
 
-  subject_alternative_names = ["www.devorderz.com"]
+  subject_alternative_names = [
+    "www.devorderz.com",
+  ]
+
+  tags = {
+    Name = "website_cert_us_east_1"
+  }
 }
 
+# Request Certificate from ACM (Backup in us-east-2, but not used)
 resource "aws_acm_certificate" "website_cert" {
   domain_name       = "devorderz.com"
   validation_method = "DNS"
 
-  subject_alternative_names = ["www.devorderz.com"]
-}
+  subject_alternative_names = [
+    "www.devorderz.com",
+  ]
 
-#----------------------------------
-#Declared CF Resources
-#----------------------------------
-
-resource "aws_cloudfront_origin_access_control" "default" {
-  name                              = "devorderz-oac"
-  description                       = "Origin Access Control for S3 bucket access"
-  origin_access_control_origin_type = "s3"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
-}
-resource "aws_cloudfront_response_headers_policy" "pass" {
-  name = "devorderz-response-headers-policy"
-
-  # Example: set security headers
-  security_headers_config {
-    content_security_policy {
-      override                = true
-      content_security_policy = "default-src 'self';"
-    }
-    content_type_options {
-      override = true
-    }
-    frame_options {
-      frame_option = "DENY"
-      override     = true
-    }
-    referrer_policy {
-      referrer_policy = "no-referrer"
-      override        = true
-    }
-    strict_transport_security {
-      access_control_max_age_sec = 63072000
-      include_subdomains         = true
-      override                   = true
-    }
-    xss_protection {
-      override   = true
-      protection = true
-      mode_block = true
-    }
+  tags = {
+    Name = "website_cert"
   }
 }
 
+# ROUTE53/ACM certificate validation for the us-east-1 certificate
+resource "aws_route53_record" "website_cert_validation_us_east_1" {
+  for_each = {
+    for dvo in aws_acm_certificate.website_cert_us_east_1.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      type   = dvo.resource_record_type
+      record = dvo.resource_record_value
+    }
+  }
 
-
-
+  zone_id = aws_route53_zone.main.zone_id
+  name    = each.value.name
+  type    = each.value.type
+  ttl     = 300
+  records = [each.value.record]
+}
 
 # ------------------------------
 # CloudFront Distribution
 # ------------------------------
 
-resource "aws_cloudfront_distribution" "devorderz" {
+# Define CloudFront Distribution
+resource "aws_cloudfront_distribution" "main" {
   origin {
-    domain_name              = "devorderz.com.s3.amazonaws.com"
-    origin_access_control_id = aws_cloudfront_origin_access_control.default.id
-    origin_id                = "devorderz.com"
+    domain_name = aws_s3_bucket.s3_bucket.bucket_regional_domain_name
+    origin_id   = "myS3Origin"
   }
 
   enabled             = true
@@ -174,11 +162,10 @@ resource "aws_cloudfront_distribution" "devorderz" {
   default_root_object = "index.html"
 
   default_cache_behavior {
-    target_origin_id           = "devorderz.com"
-    viewer_protocol_policy     = "redirect-to-https"
-    allowed_methods            = ["HEAD", "DELETE", "POST", "GET", "OPTIONS", "PUT", "PATCH"]
-    cached_methods             = ["GET", "HEAD"]
-    response_headers_policy_id = aws_cloudfront_response_headers_policy.pass.id
+    target_origin_id       = "myS3Origin"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
 
     forwarded_values {
       query_string = false
@@ -192,28 +179,7 @@ resource "aws_cloudfront_distribution" "devorderz" {
     default_ttl = 3600
     max_ttl     = 86400
   }
-  # Cache behavior with precedence 0
-  ordered_cache_behavior {
-    path_pattern     = "/content/immutable/*"
-    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
-    cached_methods   = ["GET", "HEAD", "OPTIONS"]
-    target_origin_id = "devorderz.com"
 
-    forwarded_values {
-      query_string = false
-      headers      = ["Origin"]
-
-      cookies {
-        forward = "none"
-      }
-    }
-
-    min_ttl                = 0
-    default_ttl            = 86400
-    max_ttl                = 31536000
-    compress               = true
-    viewer_protocol_policy = "redirect-to-https"
-  }
   price_class = "PriceClass_All"
 
   restrictions {
@@ -223,7 +189,7 @@ resource "aws_cloudfront_distribution" "devorderz" {
   }
 
   viewer_certificate {
-    acm_certificate_arn            = "arn:aws:acm:us-east-1:730335569978:certificate/40cb4570-84e3-4a57-83f7-302519827a39"
+    acm_certificate_arn            = aws_acm_certificate.website_cert_us_east_1.arn # Reference the certificate in us-east-1
     ssl_support_method             = "sni-only"
     minimum_protocol_version       = "TLSv1.2_2018"
     cloudfront_default_certificate = false
@@ -236,8 +202,9 @@ resource "aws_cloudfront_distribution" "devorderz" {
 # WAFv2 Web ACL (deployed in us-east-1)
 # ------------------------------
 
+# Create a WAFv2 Web ACL
 resource "aws_wafv2_web_acl" "main" {
-  provider    = aws.us_east_1
+  provider    = aws.us_east_1 # Use the us-east-1 provider for CloudFront WAF
   name        = "main-waf-acl"
   description = "Main WAF ACL"
   scope       = "CLOUDFRONT"
@@ -257,12 +224,12 @@ resource "aws_wafv2_web_acl" "main" {
     priority = 1
 
     action {
-      block {}
+      block {} # Block the request if it exceeds the rate limit
     }
 
     statement {
       rate_based_statement {
-        limit              = 1000
+        limit              = 1000 # Adjust the rate limit as needed
         aggregate_key_type = "IP"
       }
     }
@@ -272,101 +239,14 @@ resource "aws_wafv2_web_acl" "main" {
       metric_name                = "rate-limit"
       sampled_requests_enabled   = true
     }
-  }
-
-  # Rule 1: Rate Limit Rule
-  rule {
-    name     = "rate-limit"
-    priority = 1
-
-    action {
-      block {}
-    }
-
-    statement {
-      rate_based_statement {
-        limit              = 1000
-        aggregate_key_type = "IP"
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "rate-limit"
-      sampled_requests_enabled   = true
-    }
-  }
-
-  # Rule 2: AWS Managed Rules for Anonymous IP List
-  rule {
-    name     = "rule-1"
-    priority = 2
-
-    override_action {
-      count {}
-    }
-
-    statement {
-      managed_rule_group_statement {
-        name        = "AWSManagedRulesAnonymousIpList"
-        vendor_name = "AWS"
-
-
-        scope_down_statement {
-          geo_match_statement {
-            country_codes = ["US", "NL"]
-          }
-        }
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = false
-      metric_name                = "friendly-rule-metric-1"
-      sampled_requests_enabled   = false
-    }
-  }
-
-  # Rule 3: AWS Managed Rules for Known Bad Inputs
-  rule {
-    name     = "rule-2"
-    priority = 3
-
-    override_action {
-      count {}
-    }
-
-    statement {
-      managed_rule_group_statement {
-        name        = "AWSManagedRulesKnownBadInputsRuleSet"
-        vendor_name = "AWS"
-
-        scope_down_statement {
-          geo_match_statement {
-            country_codes = ["US", "NL"]
-          }
-        }
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = false
-      metric_name                = "friendly-rule-metric-2"
-      sampled_requests_enabled   = false
-    }
-  }
-
-  tags = {
-    Tag1 = "Value1"
-    Tag2 = "Value2"
   }
 }
-
 
 # ------------------------------
 # Cognito User Pool and Client
 # ------------------------------
 
+# Cognito User Pool
 resource "aws_cognito_user_pool" "project_user_pool" {
   name = "project-user-pool"
 
@@ -386,6 +266,7 @@ resource "aws_cognito_user_pool" "project_user_pool" {
   }
 }
 
+# Cognito User Pool Client
 resource "aws_cognito_user_pool_client" "project_user_pool_client" {
   name         = "project-user-pool-client"
   user_pool_id = aws_cognito_user_pool.project_user_pool.id
@@ -400,252 +281,43 @@ resource "aws_cognito_user_pool_client" "project_user_pool_client" {
 }
 
 # ------------------------------
-#  API Gateway and Lambda Integration
-# ------------------------------
-
-resource "aws_api_gateway_rest_api" "api_gateway" {
-  name = "devorderz-api"
-}
-
-resource "aws_api_gateway_resource" "customer_resource" {
-  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-  parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
-  path_part   = "customers"
-}
-
-resource "aws_api_gateway_resource" "order_resource" {
-  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-  parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
-  path_part   = "orders"
-}
-
-resource "aws_api_gateway_resource" "food_items_resource" {
-  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-  parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
-  path_part   = "food-items"
-}
-
-resource "aws_api_gateway_method" "customer_method" {
-  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
-  resource_id   = aws_api_gateway_resource.customer_resource.id
-  http_method   = "POST"
-  authorization = "NONE"
-}
-
-resource "aws_api_gateway_integration" "customer_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.api_gateway.id
-  resource_id             = aws_api_gateway_resource.customer_resource.id
-  http_method             = aws_api_gateway_method.customer_method.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.customer_function.invoke_arn
-}
-
-resource "aws_api_gateway_method" "order_method" {
-  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
-  resource_id   = aws_api_gateway_resource.order_resource.id
-  http_method   = "POST"
-  authorization = "NONE"
-}
-
-resource "aws_api_gateway_integration" "order_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.api_gateway.id
-  resource_id             = aws_api_gateway_resource.order_resource.id
-  http_method             = aws_api_gateway_method.order_method.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.order_function.invoke_arn
-}
-
-resource "aws_api_gateway_method" "food_items_method" {
-  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
-  resource_id   = aws_api_gateway_resource.food_items_resource.id
-  http_method   = "POST"
-  authorization = "NONE"
-}
-
-resource "aws_api_gateway_integration" "food_items_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.api_gateway.id
-  resource_id             = aws_api_gateway_resource.food_items_resource.id
-  http_method             = aws_api_gateway_method.food_items_method.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.food_items_function.invoke_arn
-}
-
-resource "aws_api_gateway_deployment" "api_deployment" {
-  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-}
-
-#-----------------------------
-#IAM ROLE FOR LAMBDAS
-#-----------------------------
-# IAM Role for Lambda execution
-resource "aws_iam_role" "lambda_role" {
-  name = "lambda_execution_role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Principal = {
-          Service = "lambda.amazonaws.com"
-        }
-        Effect = "Allow"
-        Sid    = ""
-      },
-    ]
-  })
-}
-
-# ------------------------------
 # Lambda Functions
 # ------------------------------
 
+# Data source for customer Lambda function code archive
 data "archive_file" "lambda_zip_customer" {
   type        = "zip"
-  source_dir  = "${path.module}/sections/Compute/lambda/customers"
+  source_dir  = "${path.module}/sections/Compute/lambda/customers/lamda_function_customer"
   output_path = "${path.module}/lambda_function_customer.zip"
 }
 
+# Data source for order Lambda function code archive
 data "archive_file" "lambda_zip_order" {
   type        = "zip"
-  source_dir  = "${path.module}/sections/Compute/lambda/orders_lambda"
+  source_dir  = "${path.module}/sections/Compute/lambda/food_items_lambda/items_storage"
   output_path = "${path.module}/lambda_function_order.zip"
 }
 
+# Data source for food items Lambda function code archive
 data "archive_file" "lambda_zip_food_items" {
   type        = "zip"
-  source_dir  = "${path.module}/sections/Compute/lambda/food_items_lambda"
-  output_path = "${path.module}/lambda_function_food_items.zip"
+  source_dir  = "${path.module}/sections/Compute/lambda/food_items_lambda/items_storage"
+  output_path = "${path.module}/lambda/fooditems.zip"
 }
 
-resource "aws_lambda_function" "customer_function" {
-  function_name = "customer-handler"
-  runtime       = "python3.9"
-  handler       = "lambda_function.lambda_handler"
-  role          = aws_iam_role.lambda_role.arn
-  filename      = data.archive_file.lambda_zip_customer.output_path
+resource "aws_iam_role" "lambda_role" {
+  name = "lambda-exec-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Action = "sts:AssumeRole",
+        Effect = "Allow",
+        Principal = {
+          Service = "lambda.amazonaws.com" # Correctly specify Lambda service as the Principal
+        }
+      }
+    ]
+  })
 }
-
-resource "aws_lambda_function" "order_function" {
-  function_name = "order-handler"
-  runtime       = "python3.9"
-  handler       = "lambda_function.lambda_handler"
-  role          = aws_iam_role.lambda_role.arn
-  filename      = data.archive_file.lambda_zip_order.output_path
-}
-
-resource "aws_lambda_function" "food_items_function" {
-  function_name = "food-items-handler"
-  runtime       = "python3.9"
-  handler       = "lambda_function.lambda_handler"
-  role          = aws_iam_role.lambda_role.arn
-  filename      = data.archive_file.lambda_zip_food_items.output_path
-}
-
-resource "aws_lambda_permission" "api_gateway_invoke_customer" {
-  statement_id  = "AllowExecutionFromAPIGateway"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.customer_function.arn
-  principal     = "apigateway.amazonaws.com"
-}
-
-resource "aws_lambda_permission" "api_gateway_invoke_order" {
-  statement_id  = "AllowExecutionFromAPIGateway"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.order_function.arn
-  principal     = "apigateway.amazonaws.com"
-}
-
-resource "aws_lambda_permission" "api_gateway_invoke_food_items" {
-  statement_id  = "AllowExecutionFromAPIGateway"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.food_items_function.arn
-  principal     = "apigateway.amazonaws.com"
-}
-
-# ------------------------------
-# RDS Instances
-# ------------------------------
-
-#  VPC Configuration
-resource "aws_vpc" "main" {
-  cidr_block = "10.0.0.0/16"
-}
-
-# Define Subnets in us-east-2a and us-east-2b
-resource "aws_subnet" "subnet_a" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.1.0/24"
-  availability_zone = "us-east-2a"
-}
-
-resource "aws_subnet" "subnet_b" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.2.0/24"
-  availability_zone = "us-east-2b"
-}
-
-# Define RDS Subnet Group with these subnets
-resource "aws_db_subnet_group" "rds_subnet_group" {
-  name       = "rds-subnet-group"
-  subnet_ids = [aws_subnet.subnet_a.id, aws_subnet.subnet_b.id]
-
-  tags = {
-    Name = "RDS subnet group"
-  }
-}
-
-#RDS Security Groups
-# Security Group for RDS Instances
-resource "aws_security_group" "sg_rds" {
-  vpc_id      = aws_vpc.main.id
-  description = "Security group for RDS instances"
-
-  # Allow inbound access on MySQL port 3306
-  ingress {
-    from_port   = 3306
-    to_port     = 3306
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # Modify this as needed for more restricted access
-  }
-
-  # Allow all outbound traffic
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "rds-security-group"
-  }
-}
-
-
-
-resource "aws_db_instance" "rds_instance1" {
-  allocated_storage      = 20
-  engine                 = "mysql"
-  instance_class         = "db.t3.micro"
-  username               = var.db_username1
-  password               = var.db_password1
-  vpc_security_group_ids = [aws_security_group.sg_rds.id]
-  db_subnet_group_name   = aws_db_subnet_group.rds_subnet_group.name
-  skip_final_snapshot    = false
-}
-
-resource "aws_db_instance" "rds_instance2" {
-  allocated_storage      = 20
-  engine                 = "mysql"
-  instance_class         = "db.t3.micro"
-  username               = var.db_username2
-  password               = var.db_password2
-  vpc_security_group_ids = [aws_security_group.sg_rds.id]
-  db_subnet_group_name   = aws_db_subnet_group.rds_subnet_group.name
-  skip_final_snapshot    = false
-}
-##testing workflow
