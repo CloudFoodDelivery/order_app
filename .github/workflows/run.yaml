@@ -3,7 +3,7 @@ name: Deployment Of frontend
 on:
   push:
     branches:
-      - main
+      - ui_test_cee
 
 jobs:
   build:
