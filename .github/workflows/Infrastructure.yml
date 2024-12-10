@@ -1,17 +1,11 @@
 name: Terraform Workflow Test
-
 on:
   push:
     branches:
       - Dadrion
-    paths:
-      - order_app/**
   pull_request:
     branches:
       - dev
-    paths:
-      - order_app/**
-
 jobs:
   terraform-infra:
     name: "Apply Terraform Code Changes"
