@@ -1,4 +1,4 @@
-name: Terraform
+name: Terraform Workflow Test
 on:
   push:
     branches:
