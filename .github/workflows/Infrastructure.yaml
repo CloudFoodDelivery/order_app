@@ -20,7 +20,7 @@ jobs:
         working-directory: ../order_app/**
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Setup Terraform with specified version on the runner
         uses: hashicorp/setup-terraform@v2
@@ -38,7 +38,6 @@ jobs:
       - name: Terraform Plan
         id: plan
         run: terraform plan -lock=false
-
 env:
   AWS_ACCESS_KEY_ID: ${{secrets.AWS_ACCESS_KEY_ID}}
   AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
