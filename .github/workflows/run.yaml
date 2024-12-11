@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - ui_test_cee
-
+#jobs to run
 jobs:
   build:
     runs-on: ubuntu-latest
