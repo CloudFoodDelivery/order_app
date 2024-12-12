@@ -1,8 +1,11 @@
-name: Terraform Workflow Test
+#This file automates the execution of terraform init,validate, plan, and apply; Deployed on AWS
+name: Deployment to AWS
 on:
-  push:
-    branches:
-      - Dadrion
+  workflow_run:
+    workflows:
+      - LocalStack Terraform Integration Test
+    types:
+      - completed
   pull_request:
     branches:
       - dev
