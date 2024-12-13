@@ -21,7 +21,7 @@ jobs:
 
       - name: Build and Start LocalStack Container
         run: |
-          docker compose up -d
+          run: docker-compose -f order_app/docker-compose.yml up -d
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
