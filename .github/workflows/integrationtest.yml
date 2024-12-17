@@ -1,3 +1,4 @@
+#running local stack to test enviornment
 name: LocalStack Terraform Integration Test
 
 on:
@@ -16,7 +17,7 @@ jobs:
 
       - name: Install Docker Compose
         run: |
-          sudo apt-get update
+          npm install update apt-get update
           sudo apt-get install docker-compose -y
 
       - name: Build and Start LocalStack Container
