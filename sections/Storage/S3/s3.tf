@@ -29,7 +29,7 @@ resource "aws_s3_bucket_policy" "s3_bucet" {
             "Sid": "Statement1",
             "Effect": "Allow",
             "Principal": "*",
-            "Action": "s3:GetObject",
+            "Action": ["s3:GetObject", "s3:PutObject"],
             "Resource": "arn:aws:s3:::www.devorderz.com/*"
         }
     ]
